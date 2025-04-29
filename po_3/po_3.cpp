@@ -25,8 +25,9 @@ struct Task {
 class ThreadPool {
 public:
     ThreadPool(size_t threadCount) : stop(false), immediateStop(false) { // час зупинки, скидання
+        idleTimesMs.resize(threadCount, 0);
         for (size_t i = 0; i < threadCount; ++i)
-            workers.emplace_back([this] { workerLoop(); }); // лямбда. Додати потік у  workers, виконувати функцію workerLoop() 
+            workers.emplace_back([this, i] { workerLoop(i); }); // лямбда. Додати потік у  workers, виконувати функцію workerLoop() 
     }
 
     ~ThreadPool() {
@@ -82,19 +83,22 @@ public:
     atomic<long long> waitTimeMs{ 0 };
     atomic<long long> totalQueueLengths{ 0 };
     atomic<int> queueSamples{ 0 };
+    vector<long long> idleTimesMs;
 
 private:
-    void workerLoop() {
+    void workerLoop(int index) {
         while (true) {
             Task task;
+            auto idleStart = steady_clock::now();
 
             {
-				unique_lock<mutex> lock(queueMutex); //conditional variable потребує unique_lock
+                unique_lock<mutex> lock(queueMutex); //conditional variable потребує unique_lock
                 cond.wait(lock, [this] {
-					return stop || (!paused && !taskQueue.empty()); // чекає поки не з'явиться нове завдання АБО не зупинять потік
+                    return stop || (!paused && !taskQueue.empty()); // чекає поки не з'явиться нове завдання АБО не зупинять потік
                     });
-
-				if (stop && (immediateStop || taskQueue.empty())) return; // якщо зупинка, то виходимо з циклу
+				auto idleEnd = steady_clock::now();
+				idleTimesMs[index] += duration_cast<milliseconds>(idleEnd - idleStart).count();
+                if (stop && (immediateStop || taskQueue.empty())) return; // якщо зупинка, то виходимо з циклу
                 if (paused || taskQueue.empty()) continue;
 
                 task = move(taskQueue.top()); // беремо завдання з черги
@@ -194,6 +198,13 @@ int main() {
         cout << "Avg queue size: " << (pool.totalQueueLengths / pool.queueSamples) << "\n";
 
     cout << "Thread count: " << pool.workerCount() << "\n";
+
+    long long totalIdleMs = 0;
+    for (size_t i = 0; i < pool.workerCount(); ++i) {
+        totalIdleMs += pool.idleTimesMs[i];
+    }
+    cout << "\nTotal idle time (all threads combined): " << fixed << setprecision(2)
+        << (totalIdleMs / 1000.0) << "s\n";
 
     return 0;
 }
