@@ -49,7 +49,7 @@ public:
     void shutdown(bool waitForTasks) {
         {
             lock_guard<mutex> lock(controlMutex);
-            stop = true;
+            stop = true; // прапорець зупинки
             immediateStop = !waitForTasks; // якщо не чекаємо на завершення, то зупиняємо всі потоки
         }
 
@@ -89,7 +89,7 @@ private:
             Task task;
 
             {
-                unique_lock<mutex> lock(queueMutex);
+				unique_lock<mutex> lock(queueMutex); //conditional variable потребує unique_lock
                 cond.wait(lock, [this] {
 					return stop || (!paused && !taskQueue.empty()); // чекає поки не з'явиться нове завдання АБО не зупинять потік
                     });
@@ -142,7 +142,7 @@ int main() {
     ThreadPool pool(4);
     atomic<int> idCounter{ 1 };
 
-    vector<thread> producers;
+    vector<thread> producers; //створюють і додають задачі до пулу
     for (int i = 0; i < 3; ++i) {
         producers.emplace_back([&pool, &idCounter] {
             srand(time(nullptr) + idCounter); // унікальна ініціалізація для кожного потоку
@@ -155,7 +155,7 @@ int main() {
             });
     }
 
-    thread monitor([&pool] {
+    thread monitor([&pool] { // відстежує розмір черги задач у пулі. накопичує статистику для оцінки середнього завантаження черги
         while (!pool.isStopped()) {
             pool.totalQueueLengths += pool.queueSize();
             pool.queueSamples++;
@@ -163,7 +163,7 @@ int main() {
         }
         });
 
-    for (auto& t : producers) t.join();
+    for (auto& t : producers) t.join(); //чекати завершення всіх продюсерів
 
     this_thread::sleep_for(seconds(5));
     cout << "\n[Main] Pausing pool...\n";
