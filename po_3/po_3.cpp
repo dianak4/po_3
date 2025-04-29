@@ -89,19 +89,22 @@ private:
     void workerLoop(int index) {
         while (true) {
             Task task;
+
             auto idleStart = steady_clock::now();
 
             {
-                unique_lock<mutex> lock(queueMutex); //conditional variable потребує unique_lock
+                unique_lock<mutex> lock(queueMutex);
                 cond.wait(lock, [this] {
-                    return stop || (!paused && !taskQueue.empty()); // чекає поки не з'явиться нове завдання АБО не зупинять потік
+                    return stop || (!paused && !taskQueue.empty());
                     });
-				auto idleEnd = steady_clock::now();
-				idleTimesMs[index] += duration_cast<milliseconds>(idleEnd - idleStart).count();
-                if (stop && (immediateStop || taskQueue.empty())) return; // якщо зупинка, то виходимо з циклу
+
+                auto idleEnd = steady_clock::now();
+                idleTimesMs[index] += duration_cast<milliseconds>(idleEnd - idleStart).count();
+
+                if (stop && (immediateStop || taskQueue.empty())) return;
                 if (paused || taskQueue.empty()) continue;
 
-                task = move(taskQueue.top()); // беремо завдання з черги
+                task = move(taskQueue.top());
                 taskQueue.pop();
             }
 
